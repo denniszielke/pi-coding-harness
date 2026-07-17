@@ -1,0 +1,10 @@
+# OpenAI Agents SDK
+openai-agents>=0.18.3
+openai>=2.46.0
+pydantic >= 2.0
+python-dotenv==1.2.2
+# Azure
+azure-identity==1.25.3
+azure-containerapps-sandbox==0.1.0b3
+azure-mgmt-resource>=26.0.0
+azure-mgmt-authorization>=4.0.0
