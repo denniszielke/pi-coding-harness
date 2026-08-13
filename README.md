@@ -33,6 +33,7 @@ Branch · Pull Request · logs
 | [demo/03-remote-mcp.py](demo/03-remote-mcp.py) | Builds and exposes a remote MCP server (Excalidraw) from a sandbox. |
 | [demo/04-yolo-with-guardrails.py](demo/04-yolo-with-guardrails.py) | Same as 02, governed by the Microsoft Agent Governance Toolkit. |
 | [demo/05-pi-coding.py](demo/05-pi-coding.py) | **The pi coding harness** — runs `pi` as the coding agent. |
+| [demo/06-copilot-cli.py](demo/06-copilot-cli.py) | Opens an interactive **GitHub Copilot CLI** sandbox with proxy-injected GitHub authentication. |
 | [scripts/deploy_managed_identity.sh](scripts/deploy_managed_identity.sh) | Provisions a user-assigned managed identity and grants it access to a Foundry model deployment (for `PI_PROVIDER=azure`). |
 | [scripts/delete_sandbox.py](scripts/delete_sandbox.py) | Tears down sandboxes, disk images, and the sandbox group. |
 
@@ -194,6 +195,16 @@ further role grants.
 ```bash
 python demo/05-pi-coding.py
 ```
+
+For an interactive GitHub Copilot CLI session using the same `.env`, run:
+
+```bash
+python demo/06-copilot-cli.py
+```
+
+The scenario adapts the Azure Samples Copilot CLI policy by replacing its PAT
+placeholders only in memory. The sandbox proxy injects authentication headers;
+the PAT is never written to the sandbox filesystem or the checked-in policy.
 
 What happens:
 

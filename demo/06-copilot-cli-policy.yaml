@@ -1,0 +1,49 @@
+# GitHub Copilot CLI egress policy. The runner replaces PASTE_PAT_HERE only
+# in memory before applying this policy; never put a real token in this file.
+#
+# Do not add a host rule for *.githubcopilot.com. Host rules are evaluated
+# before transform rules and would bypass Authorization header injection.
+
+defaultAction: Deny
+trafficInspection: Full
+
+hostRules:
+  - pattern: "*.github.com"
+    action: Allow
+  - pattern: "*.githubusercontent.com"
+    action: Allow
+  - pattern: "gh.io"
+    action: Allow
+  - pattern: "*.github.io"
+    action: Allow
+
+rules:
+  - name: github-api-auth
+    match:
+      host: "api.github.com"
+    action:
+      type: Transform
+      headers:
+        - operation: Set
+          name: Authorization
+          value: "token PASTE_PAT_HERE"
+
+  - name: copilot-enterprise-auth
+    match:
+      host: "api.enterprise.githubcopilot.com"
+    action:
+      type: Transform
+      headers:
+        - operation: Set
+          name: Authorization
+          value: "Bearer PASTE_PAT_HERE"
+
+  - name: copilot-telemetry-auth
+    match:
+      host: "telemetry.enterprise.githubcopilot.com"
+    action:
+      type: Transform
+      headers:
+        - operation: Set
+          name: Authorization
+          value: "Bearer PASTE_PAT_HERE"
