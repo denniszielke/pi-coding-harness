@@ -764,6 +764,17 @@ def main() -> int:
             label="gh-auth-check",
         )
         print(f"  ✅ Authenticated as GitHub user: {gh_user}")
+        can_push = _exec_check(
+            sandbox,
+            f"GH_TOKEN={PAT} gh api repos/{GITHUB_REPO} --jq .permissions.push",
+            label="gh-push-permission-check",
+        )
+        if can_push != "true":
+            raise RuntimeError(
+                f"GitHub token authenticates as {gh_user} but does not have push "
+                f"permission for {GITHUB_REPO}"
+            )
+        print(f"  ✅ PAT has push permission for {GITHUB_REPO}")
 
         # -- Lock down egress --------------------------------------------------
         all_allow_hosts = ALLOW_HOSTS + PROVIDER_HOSTS + EGRESS_EXTRA_HOSTS
@@ -788,13 +799,34 @@ def main() -> int:
         )
         print(f"  ✅ Cloned into {repo_dir}")
 
-        # Create and switch to the push branch
-        _exec_check(
-            sandbox,
-            f"git -C {repo_dir} checkout -b {GITHUB_BRANCH}",
-            label="git-checkout",
+        # Resume the configured remote branch when it already exists. This
+        # keeps repeated runs fast-forwardable and updates the same open PR.
+        remote_branch = sandbox.exec(
+            f"git -C {repo_dir} ls-remote --exit-code --heads origin "
+            f"refs/heads/{GITHUB_BRANCH}"
         )
-        print(f"  🌿 On new branch: {GITHUB_BRANCH}")
+        if remote_branch.exit_code == 0:
+            _exec_check(
+                sandbox,
+                f"git -C {repo_dir} fetch --depth 50 origin "
+                f"refs/heads/{GITHUB_BRANCH}:refs/remotes/origin/{GITHUB_BRANCH} && "
+                f"git -C {repo_dir} checkout -b {GITHUB_BRANCH} "
+                f"origin/{GITHUB_BRANCH}",
+                label="git-checkout-existing",
+            )
+            print(f"  🌿 Resuming remote branch: {GITHUB_BRANCH}")
+        elif remote_branch.exit_code == 2:
+            _exec_check(
+                sandbox,
+                f"git -C {repo_dir} checkout -b {GITHUB_BRANCH}",
+                label="git-checkout-new",
+            )
+            print(f"  🌿 On new branch: {GITHUB_BRANCH}")
+        else:
+            raise RuntimeError(
+                "failed to determine whether the configured remote branch exists: "
+                f"{(remote_branch.stderr or remote_branch.stdout or '').strip()}"
+            )
 
         # -- Pre-build Python environment in the repo -------------------------
         # If the repo is a Python project, pre-build a venv and auto-activate it
@@ -838,7 +870,14 @@ def main() -> int:
         # Write the prompt to a file OUTSIDE the repo so it is not committed,
         # and feed it to pi via command substitution (avoids all shell-quoting
         # issues with arbitrary prompt text).
-        sandbox.write_file("/root/pi_prompt.txt", CODING_PROMPT)
+        harness_prompt = (
+            f"{CODING_PROMPT}\n\n"
+            "The harness owns Git publication. Do not push, open a pull request, "
+            "or claim that GitHub credentials are unavailable. Make and validate "
+            "the requested changes; you may commit them locally, and the harness "
+            "will publish HEAD after you exit."
+        )
+        sandbox.write_file("/root/pi_prompt.txt", harness_prompt)
 
         # `-a` trusts project-local files for this run; `-p` is print mode
         # (non-interactive — pi runs its tools with no permission popups).
@@ -876,41 +915,69 @@ def main() -> int:
         print(f"\n### Step 9: Commit & push → {GITHUB_BRANCH}")
 
         diff_check = sandbox.exec(f"git -C {repo_dir} status --porcelain")
-        if not (diff_check.stdout or "").strip():
-            print("  ℹ️  No changes detected — nothing to commit.")
-        else:
+        if (diff_check.stdout or "").strip():
             _exec_check(sandbox, f"git -C {repo_dir} add -A", label="git-add")
             _exec_check(
                 sandbox,
                 f'git -C {repo_dir} commit -m "chore: pi-agent changes (run={run_id})"',
                 label="git-commit",
             )
+        else:
+            print("  ℹ️  Worktree clean — checking for commits created by pi.")
+
+        commits_ahead = int(_exec_check(
+            sandbox,
+            f"git -C {repo_dir} rev-list --count origin/{GITHUB_BASE_BRANCH}..HEAD",
+            label="git-commits-ahead",
+        ))
+        if commits_ahead == 0:
+            print("  ℹ️  No changes or commits to publish.")
+        else:
+            current_branch = _exec_check(
+                sandbox,
+                f"git -C {repo_dir} branch --show-current",
+                label="git-current-branch",
+            )
+            if current_branch != GITHUB_BRANCH:
+                print(
+                    f"  ℹ️  pi committed on '{current_branch}'; publishing HEAD as "
+                    f"'{GITHUB_BRANCH}'."
+                )
             push_result = _exec_check(
                 sandbox,
-                f"git -C {repo_dir} push https://x-access-token:{PAT}@github.com/{GITHUB_REPO}.git {GITHUB_BRANCH}",
+                f"git -C {repo_dir} push origin HEAD:refs/heads/{GITHUB_BRANCH}",
                 label="git-push",
             )
-            print(f"  ✅ Pushed branch: {GITHUB_BRANCH}")
+            print(f"  ✅ Pushed {commits_ahead} commit(s) to branch: {GITHUB_BRANCH}")
             print(f"  🔗 Compare: https://github.com/{GITHUB_REPO}/compare/{GITHUB_BASE_BRANCH}...{GITHUB_BRANCH}")
             if push_result:
                 print(f"     {push_result}")
 
-            # Optionally open a PR via gh CLI
-            pr_cmd = (
-                f"GH_TOKEN={PAT} gh pr create "
-                f"--repo {GITHUB_REPO} "
-                f"--head {GITHUB_BRANCH} "
-                f"--base {GITHUB_BASE_BRANCH} "
-                f'--title "pi agent: run {run_id}" '
-                f'--body "Automated changes from pi coding agent (run={run_id})\\n\\n'
-                f'Provider: {PI_PROVIDER}{"/" + PI_MODEL if PI_MODEL else ""}\\n'
-                f'Prompt: {CODING_PROMPT[:200]}"'
+            existing_pr = sandbox.exec(
+                f"GH_TOKEN={PAT} gh pr view {GITHUB_BRANCH} --repo {GITHUB_REPO} "
+                "--json url --jq .url"
             )
-            pr_r = sandbox.exec(pr_cmd)
-            if pr_r.exit_code == 0:
-                print(f"  🎉 PR created: {(pr_r.stdout or '').strip()}")
+            if existing_pr.exit_code == 0 and (existing_pr.stdout or "").strip():
+                print(f"  🎉 PR updated: {(existing_pr.stdout or '').strip()}")
             else:
-                print(f"  ℹ️  PR creation skipped (exit={pr_r.exit_code}): {(pr_r.stderr or '')[:200]}")
+                pr_cmd = (
+                    f"GH_TOKEN={PAT} gh pr create "
+                    f"--repo {GITHUB_REPO} "
+                    f"--head {GITHUB_BRANCH} "
+                    f"--base {GITHUB_BASE_BRANCH} "
+                    f'--title "pi agent: run {run_id}" '
+                    f'--body "Automated changes from pi coding agent (run={run_id})\n\n'
+                    f'Provider: {PI_PROVIDER}{"/" + PI_MODEL if PI_MODEL else ""}\n'
+                    f'Prompt: {CODING_PROMPT[:200]}"'
+                )
+                pr_r = sandbox.exec(pr_cmd)
+                if pr_r.exit_code == 0:
+                    print(f"  🎉 PR created: {(pr_r.stdout or '').strip()}")
+                else:
+                    print(
+                        f"  ℹ️  PR creation skipped (exit={pr_r.exit_code}): "
+                        f"{(pr_r.stderr or '')[:200]}"
+                    )
 
         print(f"\n✅ Done!  Branch '{GITHUB_BRANCH}' in {GITHUB_REPO}")
 

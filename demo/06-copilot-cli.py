@@ -6,7 +6,7 @@ the egress policy only in memory. Requests receive the Authorization header at
 the sandbox proxy, so the PAT is not written into the sandbox filesystem.
 
 Configuration (.env or environment variables):
-  PAT                       GitHub fine-grained PAT (required)
+    PAT                       GitHub fine-grained PAT (optional if gh is signed in)
   AZURE_SUBSCRIPTION_ID     subscription (default: active Azure CLI account)
   RESOURCE_GROUP_NAME       resource group (default: aca-sandboxes-rg)
   SANDBOX_GROUP_NAME        sandbox group (default: pi-coding)
@@ -50,9 +50,31 @@ ROOT = Path(__file__).resolve().parents[1]
 POLICY_FILE = Path(__file__).with_name("06-copilot-cli-policy.yaml")
 load_dotenv(ROOT / ".env", override=True)
 
-PAT = os.getenv("PAT", "").strip()
-if not PAT:
-    sys.exit("❌ PAT is not set. Add it to .env or export it as an env var.")
+
+def _resolve_pat() -> str:
+    for variable in ("PAT", "GH_TOKEN", "GITHUB_TOKEN"):
+        token = os.getenv(variable, "").strip()
+        if token:
+            return token
+
+    if shutil.which("gh"):
+        result = subprocess.run(
+            ["gh", "auth", "token"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        token = result.stdout.strip()
+        if result.returncode == 0 and token:
+            return token
+
+    sys.exit(
+        "❌ No GitHub token found. Run `gh auth login`, set PAT in .env, "
+        "or export GH_TOKEN."
+    )
+
+
+PAT = _resolve_pat()
 
 RESOURCE_GROUP_NAME = os.getenv("RESOURCE_GROUP_NAME", "aca-sandboxes-rg")
 SANDBOX_GROUP_NAME = os.getenv("SANDBOX_GROUP_NAME", "pi-coding")

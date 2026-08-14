@@ -172,7 +172,7 @@ reads all resource coordinates from `.env` (`AZURE_AI_PROJECT_ID`,
 ```
 
 It creates the identity, grants it `Cognitive Services OpenAI User` on the
-Foundry **account** (which governs the model deployments) and `Azure AI User`
+Foundry **account** (which governs the model deployments) and `Foundry User`
 on the **project**, then prints only the values you still need to add to
 `.env`:
 
@@ -201,6 +201,10 @@ For an interactive GitHub Copilot CLI session using the same `.env`, run:
 ```bash
 python demo/06-copilot-cli.py
 ```
+
+This scenario uses `PAT`, `GH_TOKEN`, or `GITHUB_TOKEN` when set; otherwise it
+automatically reads the active token from `gh auth token`. Run `gh auth login`
+once if the GitHub CLI is not already authenticated.
 
 The scenario adapts the Azure Samples Copilot CLI policy by replacing its PAT
 placeholders only in memory. The sandbox proxy injects authentication headers;

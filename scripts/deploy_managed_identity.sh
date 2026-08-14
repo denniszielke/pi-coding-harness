@@ -22,7 +22,7 @@
 #   2. Grants it "Cognitive Services OpenAI User" on the Foundry ACCOUNT — the
 #      scope that governs the .openai.azure.com inference endpoint and every
 #      deployment under it (the project inherits account-level data-plane roles).
-#   3. Grants it "Azure AI User" on the Foundry PROJECT (best-effort) for
+#   3. Grants it "Foundry User" on the Foundry PROJECT (best-effort) for
 #      Foundry-native (…services.ai.azure.com) access.
 #   4. Prints the env vars to add to .env for the harness.
 #
@@ -75,7 +75,7 @@ MI_NAME="${PI_MANAGED_IDENTITY_NAME:-id-pi-coding-${ENV_NAME:-foundry}}"
 LOCATION="${LOCATION:-swedencentral}"
 
 OPENAI_ROLE="Cognitive Services OpenAI User"
-PROJECT_ROLE="Azure AI User"
+PROJECT_ROLE="Foundry User"
 
 echo "🔧 Deploy managed identity for the pi coding harness"
 echo "   Subscription:   $SUBSCRIPTION_ID"
