@@ -16,6 +16,20 @@ hostRules:
     action: Allow
   - pattern: "*.github.io"
     action: Allow
+  - pattern: "files.pythonhosted.org"
+    action: Allow
+  - pattern: "pypi.org"
+    action: Allow
+  - pattern: "*.pypi.org"
+    action: Allow
+  - pattern: "bootstrap.pypa.io"
+    action: Allow
+  - pattern: "azure.archive.ubuntu.com"
+    action: Allow
+  - pattern: "deb.debian.org"
+    action: Allow
+  - pattern: "*.debian.org"
+    action: Allow
 
 rules:
   - name: github-api-auth

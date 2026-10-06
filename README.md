@@ -34,6 +34,7 @@ Branch · Pull Request · logs
 | [demo/04-yolo-with-guardrails.py](demo/04-yolo-with-guardrails.py) | Same as 02, governed by the Microsoft Agent Governance Toolkit. |
 | [demo/05-pi-coding.py](demo/05-pi-coding.py) | **The pi coding harness** — runs `pi` as the coding agent. |
 | [demo/06-copilot-cli.py](demo/06-copilot-cli.py) | Opens an interactive **GitHub Copilot CLI** sandbox with proxy-injected GitHub authentication. |
+| [demo/07-copilot-cli-yolo.py](demo/07-copilot-cli-yolo.py) | Runs **GitHub Copilot CLI** autonomously with all tools enabled, then pushes its changes and opens a pull request. |
 | [scripts/deploy_managed_identity.sh](scripts/deploy_managed_identity.sh) | Provisions a user-assigned managed identity and grants it access to a Foundry model deployment (for `PI_PROVIDER=azure`). |
 | [scripts/delete_sandbox.py](scripts/delete_sandbox.py) | Tears down sandboxes, disk images, and the sandbox group. |
 
@@ -209,6 +210,17 @@ once if the GitHub CLI is not already authenticated.
 The scenario adapts the Azure Samples Copilot CLI policy by replacing its PAT
 placeholders only in memory. The sandbox proxy injects authentication headers;
 the PAT is never written to the sandbox filesystem or the checked-in policy.
+
+To run the same CLI non-interactively as an autonomous coding agent, configure
+`GITHUB_REPO` and `CODING_PROMPT`, then run:
+
+```bash
+python demo/07-copilot-cli-yolo.py
+```
+
+The YOLO scenario clones the repository, creates a `copilot-<run_id>` branch,
+runs Copilot with `--allow-all-tools`, commits and pushes any changes, and opens
+a pull request. The sandbox is always deleted afterward.
 
 What happens:
 
