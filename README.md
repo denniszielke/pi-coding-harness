@@ -35,6 +35,7 @@ Branch · Pull Request · logs
 | [demo/05-pi-coding.py](demo/05-pi-coding.py) | **The pi coding harness** — runs `pi` as the coding agent. |
 | [demo/06-copilot-cli.py](demo/06-copilot-cli.py) | Opens an interactive **GitHub Copilot CLI** sandbox with proxy-injected GitHub authentication. |
 | [demo/07-copilot-cli-yolo.py](demo/07-copilot-cli-yolo.py) | Runs **GitHub Copilot CLI** autonomously with all permissions enabled, then pushes its changes and opens a pull request. |
+| [demo/08-copilot-squad.py](demo/08-copilot-squad.py) | Runs the existing **Squad** team on Copilot CLI to implement task-tracker's late-notification PRD, validates the project, then pushes and opens a pull request. |
 | [scripts/deploy_managed_identity.sh](scripts/deploy_managed_identity.sh) | Provisions a user-assigned managed identity and grants it access to a Foundry model deployment (for `PI_PROVIDER=azure`). |
 | [scripts/delete_sandbox.py](scripts/delete_sandbox.py) | Tears down sandboxes, disk images, and the sandbox group. |
 
@@ -227,7 +228,93 @@ Python pip/venv support and Poppler's `pdftotext` utility so the agent can creat
 virtual environments and extract PDF text without bootstrapping system tools.
 The sandbox is always deleted afterward.
 
-What happens:
+### Squad on Copilot CLI
+
+Run the existing Squad team in
+[`denniszielke/task-tracker`](https://github.com/denniszielke/task-tracker)
+against its
+[`late-notification-prd.md`](https://github.com/denniszielke/task-tracker/blob/main/late-notification-prd.md):
+
+```bash
+python demo/08-copilot-squad.py
+```
+
+Run this command from the harness repository root on your local machine.
+No prompt argument is required: the script defaults to `denniszielke/task-tracker`
+and asks Squad to implement `late-notification-prd.md`.
+
+To append specific instructions, set `SQUAD_PROMPT`:
+
+```bash
+SQUAD_PROMPT="Prioritize deterministic tests for retries, stale events, and shop isolation." \
+  python demo/08-copilot-squad.py
+```
+
+If `SQUAD_PROMPT` is also set in `.env`, that value takes precedence over the
+inline environment variable.
+
+The demo installs Node.js 22 and `@bradygaster/squad-cli@0.13.1` (matching the
+repository's coordinator), alongside Copilot CLI and the Python/PDF toolchain.
+It clones the target repo onto a new `squad-<run_id>` branch, verifies the PRD
+and existing Squad coordinator/team, and installs the locked project dependencies
+with `npm ci`. It does **not** reinitialize or upgrade the repository's Squad team.
+
+The npm CLI installation and Copilot launch follow the
+[public Squad installation guide](https://bradygaster.github.io/squad/docs/get-started/installation/)
+and [Copilot workflow](https://github.com/bradygaster/squad#readme).
+All dependency downloads run **inside the sandbox**, not on your local machine.
+The installer explicitly selects `https://registry.npmjs.org/`. Before each
+project install it also rewrites the task-tracker lockfile's known
+`ms-feed-25.pkgs.visualstudio.com/1es-public/_packaging/npm-public/npm/registry/`
+tarball prefix to the public registry, preserving package versions and integrity
+hashes. A registry flag alone does not override those pinned tarball URLs.
+This lockfile correction is included in the resulting PR; other custom registry
+URLs are not rewritten or automatically allowed through egress.
+
+The task is run through
+`copilot --agent=squad --yolo --prompt="..."`, following Squad's documented
+Copilot launch flags. Folder trust is recorded only in the ephemeral sandbox's
+Copilot configuration, rather than using the version-dependent `--trust-folder`
+flag. The `--prompt=` form keeps the entire prompt as one option value, including
+multiline content or text beginning with a dash.
+
+Concrete prompt command, run from the cloned task-tracker repository **inside
+the sandbox**, after the harness has installed dependencies and configured trust:
+
+```bash
+copilot --agent=squad --yolo \
+  --prompt="Squad, read late-notification-prd.md and late-filter-prd.md in full. Use the existing team, routing, and decisions in .squad; do not reinitialize the team. Delegate planning and review to Lead, event processing and dependency traversal to Backend, notification UI to Frontend, and deterministic acceptance tests to Tester. Implement the late-notification PRD end to end, including direct and transitive job impacts, shop-specific notifications, acknowledgements, revisions, retries, and duplicate/stale-event handling. Preserve the Late Delivery Filter and existing offline behavior. Record decisions for open questions and explicitly identify unmet production requirements. Run npm test, npm run lint, and npm run build; fix failures caused by your changes. Keep package-lock.json synchronized. Stay on the current branch and do not commit, push, open a PR, or deploy; the harness handles publishing. Finish with changes made, test results, and remaining PRD gaps."
+```
+
+To run the complete provision/install/Squad/validate/publish workflow from your
+local machine instead, use `python demo/08-copilot-squad.py` as shown above;
+the harness supplies its built-in PRD implementation prompt automatically.
+
+The coordinator is asked to delegate implementation, testing, and review to
+the existing specialists, preserve the Late Delivery Filter and offline behavior,
+and explicitly report any unmet production requirements. The harness reruns
+`npm ci`, `npm test`, `npm run lint`, and `npm run build` before it will commit,
+push, or open a PR. Passing these checks is not a claim that every PRD acceptance
+criterion has been met; review Squad's final summary and the PR.
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `SQUAD_GITHUB_REPO` | `denniszielke/task-tracker` | Target repo; must already contain the Squad team, coordinator, PRD, and npm lockfile. |
+| `SQUAD_BASE_BRANCH` | `main` | Branch to clone. |
+| `SQUAD_BRANCH` | `squad-<run_id>` | New branch for the implementation. |
+| `SQUAD_PRD` | `late-notification-prd.md` | Repository-relative PRD path. |
+| `SQUAD_PROMPT` | empty | Additional instructions appended to the PRD implementation prompt. |
+
+These task settings intentionally do not inherit `GITHUB_REPO`, `GITHUB_BRANCH`,
+`GITHUB_BASE_BRANCH`, or `CODING_PROMPT` from other demos. GitHub credentials,
+Azure settings, and `EGRESS_EXTRA_HOSTS` use the same configuration as Demo 07.
+Egress remains deny-by-default, with `registry.npmjs.org` additionally allowed
+for npm dependencies. Credentials remain process-scoped, and the sandbox is
+deleted on exit.
+
+### Pi harness steps
+
+What happens when running Demo 05:
 
 1. **Provision** — ensures the resource group and sandbox group exist, and
    assigns you `Container Apps SandboxGroup Data Owner`.
@@ -279,3 +366,4 @@ python scripts/delete_sandbox.py --delete-resource-group
 | Copilot CLI: `Denied, no one to approve` | In the YOLO sandbox, use `--allow-all`, not just `--allow-all-tools`: filesystem paths and URLs have separate approval checks. |
 | `No module named ensurepip` / venv creation fails | Install `python3-venv` (matching the interpreter version) and `python3-pip` before egress lockdown, then recreate any failed virtual environment. Demo 07 installs these during setup. |
 | `pdftotext: command not found` | Install `poppler-utils` before egress lockdown. Demo 07 includes it in the toolchain. |
+| `ServiceResponseError: Connection reset by peer` while starting the background agent | Demo 07 launches the background wrapper with `nohup` and redirects all its standard streams so the exec request can return immediately; output is then polled from the log. Cleanup messages can precede this traceback because cleanup runs in `finally`. |

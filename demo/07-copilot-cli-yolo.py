@@ -179,10 +179,16 @@ def _exec_stream(
         f"{name}={shlex.quote(value)}" for name, value in environment.items()
     )
     inner_command = (
-        f"{env_prefix} bash {script_path} >{log_path} 2>&1; "
+        f"{env_prefix} bash {script_path}; "
         f"echo $? >{done_path}"
     )
-    sandbox.exec(f"bash -c {shlex.quote(inner_command)} &")
+    # Redirect the wrapper too, so it cannot hold the exec response pipes open.
+    _exec_check(
+        sandbox,
+        f"nohup bash -c {shlex.quote(inner_command)} "
+        f"</dev/null >{log_path} 2>&1 &",
+        label="stream-start",
+    )
 
     lines_shown = 0
     while True:
