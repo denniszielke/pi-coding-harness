@@ -34,7 +34,7 @@ Branch · Pull Request · logs
 | [demo/04-yolo-with-guardrails.py](demo/04-yolo-with-guardrails.py) | Same as 02, governed by the Microsoft Agent Governance Toolkit. |
 | [demo/05-pi-coding.py](demo/05-pi-coding.py) | **The pi coding harness** — runs `pi` as the coding agent. |
 | [demo/06-copilot-cli.py](demo/06-copilot-cli.py) | Opens an interactive **GitHub Copilot CLI** sandbox with proxy-injected GitHub authentication. |
-| [demo/07-copilot-cli-yolo.py](demo/07-copilot-cli-yolo.py) | Runs **GitHub Copilot CLI** autonomously with all tools enabled, then pushes its changes and opens a pull request. |
+| [demo/07-copilot-cli-yolo.py](demo/07-copilot-cli-yolo.py) | Runs **GitHub Copilot CLI** autonomously with all permissions enabled, then pushes its changes and opens a pull request. |
 | [scripts/deploy_managed_identity.sh](scripts/deploy_managed_identity.sh) | Provisions a user-assigned managed identity and grants it access to a Foundry model deployment (for `PI_PROVIDER=azure`). |
 | [scripts/delete_sandbox.py](scripts/delete_sandbox.py) | Tears down sandboxes, disk images, and the sandbox group. |
 
@@ -219,8 +219,13 @@ python demo/07-copilot-cli-yolo.py
 ```
 
 The YOLO scenario clones the repository, creates a `copilot-<run_id>` branch,
-runs Copilot with `--allow-all-tools`, commits and pushes any changes, and opens
-a pull request. The sandbox is always deleted afterward.
+runs Copilot with `--allow-all` (tools, filesystem paths, and URLs), commits
+and pushes any changes, and opens a pull request. These approvals apply only
+inside the ephemeral sandbox; the deny-default egress policy still restricts
+network access. Before applying that policy, the harness installs and checks
+Python pip/venv support and Poppler's `pdftotext` utility so the agent can create
+virtual environments and extract PDF text without bootstrapping system tools.
+The sandbox is always deleted afterward.
 
 What happens:
 
@@ -271,3 +276,6 @@ python scripts/delete_sandbox.py --delete-resource-group
 | `<KEY> is not set (required for PI_PROVIDER=...)` | Set the API key env var that matches `PI_PROVIDER`. |
 | PR creation skipped | The branch is still pushed — open the PR from the compare link, or check the PAT's Pull requests permission. |
 | Role assignment delay | The harness waits 60s for propagation; re-run if you hit a transient auth error. |
+| Copilot CLI: `Denied, no one to approve` | In the YOLO sandbox, use `--allow-all`, not just `--allow-all-tools`: filesystem paths and URLs have separate approval checks. |
+| `No module named ensurepip` / venv creation fails | Install `python3-venv` (matching the interpreter version) and `python3-pip` before egress lockdown, then recreate any failed virtual environment. Demo 07 installs these during setup. |
+| `pdftotext: command not found` | Install `poppler-utils` before egress lockdown. Demo 07 includes it in the toolchain. |

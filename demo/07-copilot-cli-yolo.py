@@ -1,7 +1,7 @@
 """Run GitHub Copilot CLI as an autonomous coding agent in an ACA Sandbox.
 
 The script creates an ephemeral Ubuntu sandbox, installs GitHub Copilot CLI,
-clones a configured repository, runs Copilot with all tools allowed, then
+clones a configured repository, runs Copilot with all permissions allowed, then
 commits, pushes, and opens a pull request when changes were made.
 
 GitHub authentication is injected by the sandbox egress proxy for Copilot API
@@ -380,8 +380,15 @@ def main() -> int:
         print("\n### Step 4: Install toolchain [egress: default ALLOW]")
         _exec_check(
             sandbox,
-            "apt-get update -qq && apt-get install -y -qq git gh",
+            "apt-get update -qq && apt-get install -y -qq "
+            "git gh python3-pip python3-venv poppler-utils",
             label="toolchain-install",
+        )
+        _exec_check(
+            sandbox,
+            "python3 -m ensurepip --version && python3 -m pip --version && "
+            "pdftotext -v",
+            label="python-pdf-toolchain-check",
         )
         _exec_check(
             sandbox,
@@ -440,7 +447,7 @@ def main() -> int:
         exit_code = _exec_stream(
             sandbox,
             f"cd {repo_dir} && "
-            'copilot --allow-all-tools -p "$(cat /tmp/coding-prompt.txt)"',
+            'copilot --allow-all -p "$(cat /tmp/coding-prompt.txt)"',
             environment={
                 "COPILOT_GITHUB_TOKEN": PAT,
                 "GITHUB_TOKEN": PAT,
